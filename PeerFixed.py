@@ -1,7 +1,12 @@
+from pickle import TRUE
 import socket
 import sys
 import threading
 import random
+import csv
+from math import ceil, sqrt
+
+# TO DO Might need to not have file path be hard coded idk tho
 
 class Peer:
     def __init__(self, name, ip, m_port, p_port, manager_ip, manager_port):
@@ -54,17 +59,58 @@ class Peer:
             else:
                 print("Setup DHT failed:", response)
 
-    def calculatePrime(self, year):
+    """
+    Reads in data from the csv and calculates primes
+    """
+    def calculatePrime(self):
         # need to figure out some way to calculate something as the first prime > 2 * 1
+        filename = "storm_data_search_results.csv"
+        with open(filename, 'r') as f:
+            reader = csv.reader(f)
+            l = sum(1 for _ in reader) - 1
+        s = 2 * l + 1
+        while True:
+            if self.is_prime(s):
+                return s
+            s += 1
 
-        return 1000003
+    def is_prime(self, n):
+        if n <= 1:
+            return False
+        for i in range(2, ceil(sqrt(n)) + 1):
+            if n % i == 0:
+                return False
+        return True
 
     """
     Parses through CSV file and sends commands to store data accordingly
     """
-    def processCSV(self, year):
-        
-        pass
+    def processCSV(self):
+        filename = "storm_data_search_results.csv"
+        with open(filename, 'r') as f:
+            reader = csv.reader(f)
+            next(reader)
+            for row in reader:
+                event_id = int(row[0])
+                pos = event_id % self.dht_info['s']
+                target_id = pos % self.dht_info['n']
+                if target_id == self.dht_info['id']:
+                    self.store_record(pos, row)
+                else:
+                    self.forward_store_command(target_id, pos, row)
+
+    def store_record(self, pos, record):
+        with self.lock:
+            self.hash_table[pos] = record
+    
+    def forward_store_command(self, target_id, pos, record):
+        right_id = (self.dht_info['id'] + 1) % self.dht_info['n']
+        for peer in self.dht_info['peers']:
+            if peer[3] == right_id:
+                ip, port = peer[1], peer[2]
+                message = f"store {target_id} {pos} {'|'.join(record)}"
+                self.sendToPeer(ip, port, message)
+                break
         
     def sendToPeer(self, ip, port, message):
         self.peer_sock.sendto(message.encode(), (ip, port))
@@ -88,6 +134,14 @@ class Peer:
                 }
             self.state = 'InDHT'
             print(f"Set ID to {peer_id} with {n} peers")
+        elif cmd == 'store':
+            target_id = int(parts[1])
+            pos = int(parts[2])
+            record = parts[3]
+            if self.dht_info['id'] == target_id:
+                self.store_record(pos, record)
+            else:
+                self.forward_store_command(target_id, pos, record)
 
     def listenManager(self):
         while True:

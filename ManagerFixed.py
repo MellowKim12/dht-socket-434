@@ -244,7 +244,9 @@ class DHTManager:
             self.waiting_for = None
             return "SUCCESS"
 
-
+    """
+    Decides which command from a received message to run
+    """
     def process_command (self, data):
         parts = data.split()
         if not parts:
@@ -292,7 +294,9 @@ class DHTManager:
         except ValueError:
             return "FAILURE. Invalid Parameters"
 
-
+    """
+    Starts the manager process and creates sockets
+    """
     def run(self):
         sock = socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.bind('', self.port)
