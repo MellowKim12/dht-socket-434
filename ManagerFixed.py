@@ -1,4 +1,4 @@
-import socket
+import socket as socket
 import sys
 import random
 from threading import Lock
@@ -45,7 +45,7 @@ class DHTManager:
     State of peer is set to FREE
     """
     def register(self, peer_name, addr, m_port, p_port):
-        with self.Lock:
+        with self.lock:
             if peer_name in self.peers:
                 return "FAILURE: Duplicate Peer Name"
             for peer in self.peers.values():
@@ -85,6 +85,7 @@ class DHTManager:
 
             # find free peers
             free_peers = [name for name, info in self.peers.items() if info['state'] == 'Free']
+            print(free_peers)
             if len(free_peers) < n:
                 return "FAILURE: Not enough free peers"
             if self.peers[peer_name]['state'] != 'Free':
@@ -298,15 +299,16 @@ class DHTManager:
     Starts the manager process and creates sockets
     """
     def run(self):
-        sock = socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind('', self.port)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind(("", self.port))
         print(f"Manager running on port {self.port}")
         while True:
             data, addr = sock.recvfrom(1024)
             response = self.process_command(data.decode())
             sock.sendto(response.encode(), addr)
 
-if __name__ == 'main':
+if __name__ == '__main__':
+    print("running?")
     if len(sys.argv) != 2:
         print("Usage: python dht_manager.py <port>")
         sys.exit(1)
