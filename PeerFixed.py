@@ -59,6 +59,55 @@ class Peer:
             else:
                 print("Setup DHT failed:", response)
 
+    def deregister(self):
+        response = self.sendToManager(f"deregister {self.name}")
+        print(response)
+        if response.startswith("SUCCESS"):
+            sys.exit(0)
+
+    def query(self, event_id):
+        response = self.sendToManager(f"query-dht {self.name}")
+        if not response.startswith("SUCCESS"):
+            return
+
+        _, target_name, target_ip, target_port = response.split()
+        self.sendToPeer(target_ip, int(target_port), f"find-event {event_id} {self.name} | {self.ip} | {self.p_port}")
+
+    def findEvent(self, event_id, requester_info):
+        # implement hot potato protocol here
+
+        # send result back to requester
+        pass
+
+    def leaveDHT(self):
+        response = self.sendToManager(f"leave-dht {self.name}")
+        if (response.startswith("SUCCESS")):
+            self.initiateLeaveProtocol()
+
+    def initiateLeaveProtocol(self):
+        # implement leave protocol from 1.2.3
+        pass
+
+    def joinDHT(self):
+        response = self.sendToManager(f"join-dht {self.name}")
+        if (response.startswith("SUCCESS")):
+            self.initiateJoinProtocol()
+    
+    def initiateJoinProtocol():
+        # implement join protocol 
+        pass
+
+    def teardownDHT(self):
+        response = self.sendToManager(f"teardown-dht {self.name}")
+        if (response.startswith("SUCCESS")):
+            self.initiateTeardown()
+
+    def initiateTeardown(self):
+        # implement teardown (send teardown command throughout the ring)
+        pass
+
+
+
     """
     Reads in data from the csv and calculates primes
     """
@@ -142,6 +191,13 @@ class Peer:
                 self.store_record(pos, record)
             else:
                 self.forward_store_command(target_id, pos, record)
+        elif cmd == 'find-event':
+            self.findEvent(parts[1], parts[2])
+        elif cmd == 'reset-id':
+            # need to implement
+            pass
+        elif cmd == 'teardown':
+            self.teardownDHT()
 
     def listenManager(self):
         while True:
@@ -163,6 +219,18 @@ class Peer:
             if cmd.startswith('setup-dht'):
                 _,n, year = cmd.split()
                 self.setupDHT(int(n), year)
+            elif cmd.startswith('deregister'):
+                self.deregister()
+            elif cmd.startswith('query-dht'):
+                _, event_id =cmd.split()
+                self.query(int(event_id))
+            elif cmd.startswith('leave-dht'):
+                self.leaveDHT()
+            elif cmd.startswith('join-dht'):
+                self.joinDHT()
+            elif cmd.startswith('teardown-dht'):
+                self.teardownDHT()
+            
 
 if __name__ == '__main__':
     if len(sys.argv) != 7:
