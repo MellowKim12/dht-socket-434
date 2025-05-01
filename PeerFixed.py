@@ -71,13 +71,27 @@ class Peer:
             return
 
         _, target_name, target_ip, target_port = response.split()
-        self.sendToPeer(target_ip, int(target_port), f"find-event {event_id} {self.name} | {self.ip} | {self.p_port}")
+        seq_id = []
+        copy_peers = self.dht_info['peers']
+        self.sendToPeer(target_ip, int(target_port), f"find-event {event_id} {self.name}  {self.ip}  {self.p_port} {seq_id} {copy_peers}")
 
-    def findEvent(self, event_id, requester_info):
+    def findEvent(self, event_id, target_name, target_ip, target_port, seq_id, copy_peers):
         # implement hot potato protocol here
-
+        pos = event_id % self.dht_info['s']
+        id = pos % self.dht_info['n']
+        seq_id.append(id)
+        if id == self.dht_info['id']:
+            row = self.hash_table[pos]
+            if int(row[0]) == event_id:
+                self.sendToPeer(target_ip,int(target_port),f"SUCCESS {row}, {id}")
+        else:
+            if not copy_peers:
+                self.sendToPeer(target_ip,int(target_port),f"FAILURE. STORM event {event_id} not found in the DHT.")
+            copy_peers.pop(id)
+            next = random.choice(copy_peers)
+            self.sendToPeer(next.ip, int(next.p_port), f"find-event {event_id} {target_name}  {target_ip}  {target_port} {seq_id} {copy_peers}")
+            
         # send result back to requester
-        pass
 
     def leaveDHT(self):
         response = self.sendToManager(f"leave-dht {self.name}")
@@ -86,6 +100,7 @@ class Peer:
 
     def initiateLeaveProtocol(self):
         # implement leave protocol from 1.2.3
+
         pass
 
     def joinDHT(self):
@@ -104,6 +119,7 @@ class Peer:
 
     def initiateTeardown(self):
         # implement teardown (send teardown command throughout the ring)
+
         pass
 
 
@@ -192,7 +208,7 @@ class Peer:
             else:
                 self.forward_store_command(target_id, pos, record)
         elif cmd == 'find-event':
-            self.findEvent(parts[1], parts[2])
+            self.findEvent(parts[1], parts[2], parts[3], parts[4])
         elif cmd == 'reset-id':
             # need to implement
             pass

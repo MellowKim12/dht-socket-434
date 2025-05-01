@@ -258,6 +258,10 @@ class DHTManager:
                 if len(parts) != 5:
                     return "FAILURE. Invalid register command"
                 return self.register(parts[1], parts[2], int(parts[3]), int(parts[4]))
+            elif cmd == 'deregister':
+                if len(parts) != 2:
+                    return "FAILURE"
+                return self.deregister(parts[1])
             elif cmd == 'setup-dht':
                 if len(parts) != 4:
                     return "FAILURE. Invalid setup-dht command"
