@@ -50,11 +50,11 @@ class Peer:
                 name, ip, p_port = peers_info[i], peers_info[i+1], int(peers_info[i+2])
                 peers.append((name, ip, p_port))
 
-            s = self.calculatePrime()
+            s = 191
             self.dht_info = {
                 'id': 0,
                 'n': len(peers),
-                's': s,
+                's': 191,
                 'peers': [(name, ip, p_port, idx) for idx, (name, ip, p_port) in enumerate(peers)]
                 }
             self.state = 'Leader'
@@ -95,41 +95,54 @@ class Peer:
         copy_peers = []
         first_run = True
         self.sendToPeer(target_ip, int(target_port), f"find-event {event_id} {self.name}  {self.ip}  {self.p_port} {seq_id} {copy_peers} {first_run}")
-        response, _ = self.peer_sock.recvfrom(1024)
-        print(response)
+        print("done")
         
 
     def findEvent(self, event_id, target_name, target_ip, target_port, seq_id_string, copy_peers, first_run):
         # implement hot potato protocol here
         print("in find event")
-        if first_run:
-            copy_peers = self.dht_info['peers']
+        if first_run == "True":
+            copy_peers = []
+            for peer in self.dht_info['peers']:
+                copy_peers.append(peer[3])
             first_run = False
+        else:
+            copy_peers = [int(num) for num in copy_peers.split("-")]
         pos = int(event_id) % self.dht_info['s']
         id_pos = pos % int(self.dht_info['n'])
         seq_id = []
+        print("seq id string:", seq_id_string)
         if seq_id_string != '[]':
             seq_id = [int(num) for num in seq_id_string.split("-")]
-        seq_id.append(int(id_pos))
         if id_pos == self.dht_info['id']:
             print("found id pos")
             row = self.hash_table[pos]
-            print("row: ", row[0])
+            print("row: ", row)
             print("event id:", event_id)
-            if int(row[0]) == event_id:
+            print("row: ", row)
+            print("event_id: ", event_id)
+            seq_id.append(self.dht_info['id'])
+            if str(event_id) in str(row):
                 print("FOUND")
-                self.sendToPeer(target_ip,int(target_port),f"SUCCESS {row}, {id_pos}")
+                print("target ip: ", target_ip)
+                print("target port: ", target_port)
+                seq_id_send = "-".join(map(str, seq_id))
+                self.sendToPeer(target_ip,int(target_port),f"SUCCESS-query {row} {seq_id_send}")
         else:
             print("not found")
+            seq_id.append(self.dht_info['id'])
+            copy_peers.remove(self.dht_info['id'])
             if not copy_peers:
                 self.sendToPeer(target_ip,int(target_port),f"FAILURE. STORM event {event_id} not found in the DHT.")
-            for peer in copy_peers:
-                if peer[3] == id_pos:
-                    copy_peers.remove(peer)
+            copy_peers_send = "-".join(map(str, copy_peers))
+            next_peer_id = random.choice(copy_peers)
+            for peer in self.dht_info['peers']:
+                print("peer[3]: ", peer[3])
+                if peer[3] == next_peer_id:
+                    seq_id.append(int())
+                    seq_id_send = "-".join(map(str, seq_id))
+                    self.sendToPeer(peer[1], int(peer[2]), f"find-event {event_id} {target_name}  {target_ip}  {target_port} {seq_id_send} {copy_peers_send} {first_run}")
                     break
-            next_peer = random.choice(copy_peers)
-            seq_id_send = "-".join(map(str, seq_id))
-            self.sendToPeer(next_peer[1], int(next_peer[2]), f"find-event {event_id} {target_name}  {target_ip}  {target_port} {seq_id_send} {copy_peers} {copy_peers} {first_run}")
             
         # send result back to requester
 
@@ -157,6 +170,7 @@ class Peer:
         if (response.startswith("SUCCESS")):
             first_run = True
             self.initiateTeardown(self.name, first_run)
+            self.sendToManager(f"teardown-complete {name}")
 
     def initiateTeardown(self, name, first_run):
         # implement teardown (send teardown command throughout the ring)
@@ -171,7 +185,6 @@ class Peer:
                         self.sendToPeer(ip, port, message)
                         break
             del self.hash_table
-            self.sendToManager(f"teardown-complete {name}")
         else:
             del self.hash_table
             right_id = (self.dht_info['id'] + 1) % self.dht_info['n']
@@ -255,7 +268,7 @@ class Peer:
             self.dht_info = {
                 'id': peer_id,
                 'n': n,
-                's': s,
+                's': 191,
                 'peers': [(name, ip, p_port, idx) for idx, (name, ip, p_port) in enumerate(peers)]
                 }
             self.state = 'InDHT'
@@ -272,6 +285,9 @@ class Peer:
         elif cmd == 'find-event':
             print("parts: ", parts)
             self.findEvent(parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7])
+        elif cmd.startswith('SUCCESS-query'):
+            seq_id_send = [int(num) for num in parts[2].split("-")]
+            print(f"successful query: {parts[1]} seq_id: {seq_id_send}")
         elif cmd == 'reset-id':
             # need to implement
             pass
@@ -311,7 +327,6 @@ class Peer:
                 self.joinDHT()
             elif cmd.startswith('teardown-dht'):
                 self.teardownDHT()
-            
 
 if __name__ == '__main__':
     if len(sys.argv) != 7:
