@@ -249,7 +249,7 @@ class DHTManager:
     Decides which command from a received message to run
     """
     def process_command (self, data):
-        parts = data.split()
+        parts = data.decode().split()
         if not parts:
             return "FAILURE. Empty command"
         cmd = parts[0]
@@ -273,6 +273,7 @@ class DHTManager:
             elif cmd == 'query-dht':
                 if len(parts) != 2:
                     return "FAILURE"
+                print("query started")
                 return self.queryDHT(parts[1])
             elif cmd == 'leave-dht':
                 if len(parts) != 2:
@@ -305,10 +306,12 @@ class DHTManager:
     def run(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.bind(("", self.port))
+        ip_address = sock.getsockname()[0]
+        print(f"Manager running on IP {ip_address}")
         print(f"Manager running on port {self.port}")
         while True:
             data, addr = sock.recvfrom(1024)
-            response = self.process_command(data.decode())
+            response = self.process_command(data)
             sock.sendto(response.encode(), addr)
 
 if __name__ == '__main__':
