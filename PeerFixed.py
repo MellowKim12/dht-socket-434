@@ -16,6 +16,9 @@ class Peer:
         self.p_port = p_port
         self.manager_ip = manager_ip
         self.manager_port = manager_port
+        self.next_addr = None
+        self.next_query_addr = None
+        self.prev_addr = None
         self.state = 'Free'
         self.dht_info = None
         self.hash_table = {}
@@ -34,30 +37,41 @@ class Peer:
         return response.decode()
 
     def setupDHT(self, n, year):
+        print("monkeyerick")
         response = self.sendToManager(f"setup-dht {self.name} {n} {year}")
+        print("monkeydog")
         if response.startswith("SUCCESS"):
+            print("monkey")
             peers_info = response.split()[1:]
             peers = []
             for i in range(0, len(peers_info), 3):
                 name, ip, p_port = peers_info[i], peers_info[i+1], int(peers_info[i+2])
                 peers.append((name, ip, p_port))
+
+            s = self.calculatePrime()
             self.dht_info = {
                 'id': 0,
                 'n': len(peers),
+                's': s,
                 'peers': [(name, ip, p_port, idx) for idx, (name, ip, p_port) in enumerate(peers)]
                 }
             self.state = 'Leader'
 
             for idx, (name, ip, p_port, _) in enumerate(self.dht_info['peers']):
                 if name != self.name:
-                    message = f"set-id {idx} {len(peers)} {self.dht_info['s']} " + " ".join(f"{p[0]}, {p[1]}, {p[2]}"
+
+                    message = f"set-id {idx} {len(peers)} {self.dht_info['s']} " + " ".join(f"{p[0]},{p[1]},{p[2]}"
                                for p in self.dht_info['peers'])
                     self.sendToPeer(ip, p_port, message)
 
-                self.processCSV(year)
-                self.sendToManager(f"dht-complete {self.name}")
-            else:
-                print("Setup DHT failed:", response)
+            self.processCSV()
+            response = self.sendToManager(f"dht-complete {self.name}")
+           
+        else:
+            print("Setup DHT failed:", response)
+
+    def store_record(self, pos, record):
+        self.hash_table[pos] = record
 
     def deregister(self):
         response = self.sendToManager(f"deregister {self.name}")
@@ -67,22 +81,30 @@ class Peer:
 
     def query(self, event_id):
         response = self.sendToManager(f"query-dht {self.name}")
+        print(response)
         if not response.startswith("SUCCESS"):
             return
 
         _, target_name, target_ip, target_port = response.split()
+
         seq_id = []
         copy_peers = self.dht_info['peers']
         self.sendToPeer(target_ip, int(target_port), f"find-event {event_id} {self.name}  {self.ip}  {self.p_port} {seq_id} {copy_peers}")
+        response, _ = self.peer_sock.recvfrom(1024)
+        print(response)
+        
 
     def findEvent(self, event_id, target_name, target_ip, target_port, seq_id, copy_peers):
         # implement hot potato protocol here
+        print("in find event")
         pos = event_id % self.dht_info['s']
         id = pos % self.dht_info['n']
         seq_id.append(id)
         if id == self.dht_info['id']:
+            
             row = self.hash_table[pos]
             if int(row[0]) == event_id:
+                print("FOUND")
                 self.sendToPeer(target_ip,int(target_port),f"SUCCESS {row}, {id}")
         else:
             if not copy_peers:
@@ -151,22 +173,21 @@ class Peer:
     Parses through CSV file and sends commands to store data accordingly
     """
     def processCSV(self):
+        print("in process csv")
         filename = "storm_data_search_results.csv"
         with open(filename, 'r') as f:
             reader = csv.reader(f)
+            records = 0
             next(reader)
             for row in reader:
+                records += 1
                 event_id = int(row[0])
-                pos = event_id % self.dht_info['s']
+                pos = (event_id % self.dht_info['s'])
                 target_id = pos % self.dht_info['n']
                 if target_id == self.dht_info['id']:
                     self.store_record(pos, row)
                 else:
                     self.forward_store_command(target_id, pos, row)
-
-    def store_record(self, pos, record):
-        with self.lock:
-            self.hash_table[pos] = record
     
     def forward_store_command(self, target_id, pos, record):
         right_id = (self.dht_info['id'] + 1) % self.dht_info['n']
@@ -189,6 +210,7 @@ class Peer:
             s = int(parts[3])
             peers = []
             for p_str in parts[4:]:
+                print(p_str)
                 name, ip, p_port = p_str.split(',')
                 peers.append((name, ip, int(p_port)))
             self.dht_info = {
@@ -219,15 +241,17 @@ class Peer:
         while True:
             data, addr = self.manager_sock.recvfrom(1024)
             print("Manager response:", data.decode())
+            break
+            
 
     def listenPeer(self):
         while True:
-            data, addr = self.peer_sock.recvfrom(1024)
+            data, addr = self.peer_sock.recvfrom(65536)
             self.handlePeerMessage(data.decode())
+            
 
     def run(self):
-        threading.Thread(target=self.listenManager, daemon=True).start()
-        threading.Thread(target = self.listenPeer, daemon=True).start()
+        threading.Thread(target=self.listenPeer, daemon=True).start()
         while True:
             cmd = input().strip()
             if cmd == 'exit':
