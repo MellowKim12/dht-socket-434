@@ -315,7 +315,8 @@ class Peer:
             test = iter(parts[3].split('-'))
             res = [(ele.split(',')) for ele in test]
             print("res", str(res))
-            self.dht_info['peers'] = [tuple(arr) for arr in res]
+            tuples = [tuple(arr) for arr in res]
+            self.dht_info['peers'] = self.convert_string_to_int(tuples)
             print("new peers: ", str(self.dht_info['peers']))
 
             self.dht_info['id'] = new_id
@@ -376,6 +377,18 @@ class Peer:
                 self.joinDHT()
             elif cmd.startswith('teardown-dht'):
                 self.teardownDHT()
+
+    def convert_string_to_int(self,list_of_tuples):
+        new_list = []
+        for tup in list_of_tuples:
+            new_tuple = ()
+            for element in tup:
+                if element == tup[3]:
+                    new_tuple += (int(element),)
+                else:
+                    new_tuple += (element,)
+            new_list.append(new_tuple)
+        return new_list
             
 
 if __name__ == '__main__':
