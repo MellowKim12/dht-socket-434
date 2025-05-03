@@ -137,9 +137,9 @@ class Peer:
     def leaveDHT(self):
         response = self.sendToManager(f"leave-dht {self.name}")
         if (response.startswith("SUCCESS")):
-            self.initiateLeaveProtocol()
+            self.initiateLeaveProtocol(self.name)
 
-    def initiateLeaveProtocol(self):
+    def initiateLeaveProtocol(self, name):
         # implement leave protocol from 1.2.3
         print(f"{self.name} initiating leave protocol")
         right_neighbor = self.getRightNeighbor()
@@ -153,7 +153,7 @@ class Peer:
 
         new_ring_size = self.dht_info['n'] - 1
         updated_peers = [p for p in self.dht_info['peers'] if p[0] != self.name]
-        reset_msg = f"reset-id 0 {new_ring_size} {'-'.join(f'{p[0]},{p[1]},{p[2]},{p[3]}' for p in updated_peers)}"
+        reset_msg = f"reset-id 0 {new_ring_size} {'-'.join(f'{p[0]},{p[1]},{p[2]},{p[3]}' for p in updated_peers)} {name}"
         self.sendToPeer(right_neighbor[1], right_neighbor[2], reset_msg)
         
 
@@ -326,7 +326,7 @@ class Peer:
                 print("cats")
                 next_id = new_id + 1
                 right_neighbor = self.getRightNeighbor()
-                msg = f"reset-id {next_id} {new_n} {parts[3]}"
+                msg = f"reset-id {next_id} {new_n} {parts[3]} {parts[4]}"
                 self.sendToPeer(right_neighbor[1], right_neighbor[2], msg)
             else:   
                 print("dogs")
@@ -334,7 +334,7 @@ class Peer:
                     if peer[3] == self.dht_info['id']:
                         ip, port = peer[1], peer[2]
                         self.sendToPeer(ip, port, "rebuild-dht")
-                        self.sendToManager(f"dht-rebuilt {self.name} {peer[0]}")
+                        self.sendToManager(f"dht-rebuilt {parts[4]} {peer[0]}")
                         break
         elif cmd == 'rebuild-dht':
             self.processCSV()
