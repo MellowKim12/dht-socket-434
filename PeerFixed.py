@@ -144,15 +144,16 @@ class Peer:
         print(f"{self.name} initiating leave protocol")
         right_neighbor = self.getRightNeighbor()
         print(right_neighbor)
-        self.sendToPeer(right_neighbor[1], right_neighbor[2], f"teardown {self.name}")
+        first_run = "True"
+        self.sendToPeer(right_neighbor[1], right_neighbor[2], f"teardown {self.name} {first_run}")
 
         while not hasattr(self, "teardown_complete"):
             pass
-        del self.teardown_complete
+        self.teardown_complete = True
 
         new_ring_size = self.dht_info['n'] - 1
         updated_peers = [p for p in self.dht_info['peers'] if p[0] != self.name]
-        reset_msg = f"reset-id 0 {new_ring_size} {' '.join(f'{p[0]},{p[1]},{p[2]}' for p in updated_peers)}"
+        reset_msg = f"reset-id 0 {new_ring_size} {'-'.join(f'{p[0]},{p[1]},{p[2]}' for p in updated_peers)}"
         self.sendToPeer(right_neighbor[1], right_neighbor[2], reset_msg)
         
 
@@ -195,7 +196,7 @@ class Peer:
     def initiateTeardown(self, name, first_run):
         # implement teardown (send teardown command throughout the ring)
         if self.name == name:
-            if first_run == "Flase":
+            if first_run == "True":
                 first_run = False
                 right_id = (self.dht_info['id'] + 1) % self.dht_info['n']
                 for peer in self.dht_info['peers']:
@@ -311,15 +312,19 @@ class Peer:
         elif cmd == 'reset-id':
             new_id = int(parts[1])
             new_n = int(parts[2])
+            test = iter(parts[3].split('-'))
+            res = [(ele, next(test)) for ele in test]
+            print("res", str(res))
+            # self.dht_info['peers'] = 
 
             self.dht_info['id'] = new_id
             self.dht_info['n'] = new_n
             print(f"new Id {new_id} new_n {new_n}")
             if new_id < new_n - 1:
                 print("cats")
-                next_id = new_id
+                next_id = new_id + 1
                 right_neighbor = self.getRightNeighbor()
-                msg = f"reset-id {next_id} {new_n}"
+                msg = f"reset-id {next_id} {new_n} {parts[3]}"
                 self.sendToPeer(right_neighbor[1], right_neighbor[2], msg)
             else:   
                 print("dogs")
