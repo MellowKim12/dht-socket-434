@@ -166,22 +166,34 @@ class Peer:
 
     def joinDHT(self):
         response = self.sendToManager(f"join-dht {self.name}")
-        if (response.startswith("SUCCESS")):
-            self.initiateJoinProtocol()
+        if (response.startswith("SUCCESS ")):
+            payload = response[len("SUCCESS "):]
+            peers = json.loads(payload)
+            print(peers)
+            self.initiateJoinProtocol(peers)
     
-    def initiateJoinProtocol(self):
+    def initiateJoinProtocol(self, peers):
         # implement join protocol 
-        members = self.dht_info['peers'] if self.dht_info else [] 
-
+        members = peers
+        #print(members)
         new_n = len(members) + 1
+        new_peer_info = {
+            'ip':    self.ip,
+            'm_port': self.m_port,
+            'p_port': self.p_port,
+            'state': 'InDHT'
+        }
+
+        members[self.name] = new_peer_info
+
         self.dht_info = { 
             'id': new_n - 1,
             'n': new_n,
-            'peers': members + [(self.name, self.ip, self.p_port, new_n-1)]
+            'peers': members
         }
 
-        leader = members[0]
-        msg = f"reset-id 0 {new_n}"
+        leader = members[self.name]
+        msg = f"reset-id 0 {new_n} {'-'.join(f'{p[0]},{p[1]},{p[2]},{p[3]}' for p in members)}"
         self.sendToPeer(leader['ip'], leader['p_port'], msg)
 
     def teardownDHT(self):
@@ -311,21 +323,30 @@ class Peer:
         elif cmd == 'reset-id':
             new_id = int(parts[1])
             new_n = int(parts[2])
+            test = iter(parts[3].split('-'))
+            res = [(ele.split(',')) for ele in test]
+            print("res", str(res))
+            self.dht_info['peers'] = [tuple(arr) for arr in res]
+            print("new peers: ", str(self.dht_info['peers']))
 
             self.dht_info['id'] = new_id
             self.dht_info['n'] = new_n
             print(f"new Id {new_id} new_n {new_n}")
             if new_id < new_n - 1:
                 print("cats")
-                next_id = new_id
+                next_id = new_id + 1
                 right_neighbor = self.getRightNeighbor()
-                msg = f"reset-id {next_id} {new_n}"
+                msg = f"reset-id {next_id} {new_n} {parts[3]}"
                 self.sendToPeer(right_neighbor[1], right_neighbor[2], msg)
             else:   
                 print("dogs")
-                leader = (self.dht_info['id'] + 1) % self.dht_info['n']
-                self.sendToPeer(leader['ip'], leader['p_port'], "rebuild-dht")
-                self.sendToManager(f"dht-rebuilt {self.name} {leader['name']}")
+                right_id = (self.dht_info['id'] + 1) % self.dht_info['n']
+                for peer in self.dht_info['peers']:
+                    if peer[3] == right_id:
+                        ip, port = peer[1], peer[2]
+                        self.sendToPeer(ip, port, "rebuild-dht")
+                        self.sendToManager(f"dht-rebuilt {self.name} {peer[0]}")
+                        break
 
         elif cmd == 'rebuild-dht':
             self.processCSV()

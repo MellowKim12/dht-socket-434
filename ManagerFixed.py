@@ -1,6 +1,7 @@
 import socket as socket
 import sys
 import random
+import json
 from threading import Lock
 from collections import defaultdict;
 
@@ -181,7 +182,7 @@ class DHTManager:
                 return "FAILURE"
             self.pending_peer = peer_name
             self.waiting_for = 'dht-rebuilt'
-            return "SUCCESS"
+            return "SUCCESS " + json.dumps(self.peers)
 
     """
     Receipt of rebuiltDHT indicates all steps of managing the peer churn ahve been completed
