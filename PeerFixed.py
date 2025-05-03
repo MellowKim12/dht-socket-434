@@ -330,14 +330,12 @@ class Peer:
                 self.sendToPeer(right_neighbor[1], right_neighbor[2], msg)
             else:   
                 print("dogs")
-                right_id = (self.dht_info['id'] + 1) % self.dht_info['n']
                 for peer in self.dht_info['peers']:
-                    if peer[3] == right_id:
+                    if peer[3] == self.dht_info['id']:
                         ip, port = peer[1], peer[2]
                         self.sendToPeer(ip, port, "rebuild-dht")
                         self.sendToManager(f"dht-rebuilt {self.name} {peer[0]}")
                         break
-
         elif cmd == 'rebuild-dht':
             self.processCSV()
             print("DHT Rebuilt Successfully")
@@ -383,7 +381,7 @@ class Peer:
         for tup in list_of_tuples:
             new_tuple = ()
             for element in tup:
-                if element == tup[3]:
+                if element == tup[3] or element == tup[2]:
                     new_tuple += (int(element),)
                 else:
                     new_tuple += (element,)
