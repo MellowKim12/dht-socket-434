@@ -187,7 +187,7 @@ class Peer:
     def teardownDHT(self):
         response = self.sendToManager(f"teardown-dht {self.name}")
         if (response.startswith("SUCCESS")):
-            first_run = True
+            first_run = "True"
             self.initiateTeardown(self.name, first_run)
             self.sendToManager(f"teardown-complete {name}")
 
@@ -195,7 +195,7 @@ class Peer:
     def initiateTeardown(self, name, first_run):
         # implement teardown (send teardown command throughout the ring)
         if self.name == name:
-            if first_run:
+            if first_run == "Flase":
                 first_run = False
                 right_id = (self.dht_info['id'] + 1) % self.dht_info['n']
                 for peer in self.dht_info['peers']:
@@ -211,7 +211,7 @@ class Peer:
             for peer in self.dht_info['peers']:
                 if peer[3] == right_id:
                     ip, port = peer[1], peer[2]
-                    message = f"teardown {name}"
+                    message = f"teardown {name} {first_run}"
                     self.sendToPeer(ip, port, message)
                     break
             
