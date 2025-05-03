@@ -141,7 +141,7 @@ class Peer:
             for peer in self.dht_info['peers']:
                 print("peer[3]: ", peer[3])
                 if peer[3] == next_peer_id:
-                    seq_id.append(int())
+                    seq_id.append(self.dht_info['id'])
                     seq_id_send = "-".join(map(str, seq_id))
                     self.sendToPeer(peer[1], int(peer[2]), f"find-event {event_id} {target_name}  {target_ip}  {target_port} {seq_id_send} {copy_peers_send} {first_run}")
                     break
