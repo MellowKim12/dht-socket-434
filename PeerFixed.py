@@ -1,6 +1,6 @@
 import ast
 import json
-from pickle import TRUE
+from pickle import NEXT_BUFFER, TRUE
 import socket
 import sys
 import threading
@@ -23,6 +23,7 @@ class Peer:
         self.prev_addr = None
         self.state = 'Free'
         self.dht_info = None
+        self.teardown_complete = False
         self.hash_table = {}
         self.manager_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.manager_sock.bind((ip, m_port))
@@ -140,23 +141,56 @@ class Peer:
 
     def initiateLeaveProtocol(self):
         # implement leave protocol from 1.2.3
+        print(f"{self.name} initiating leave protocol")
+        right_neighbor = self.getRightNeighbor()
+        print(right_neighbor)
+        self.sendToPeer(right_neighbor[1], right_neighbor[2], f"teardown {self.name}")
 
-        pass
+        while not hasattr(self, "teardown_complete"):
+            pass
+        del self.teardown_complete
+
+        new_ring_size = self.dht_info['n'] - 1
+        updated_peers = [p for p in self.dht_info['peers'] if p[0] != self.name]
+        reset_msg = f"reset-id 0 {new_ring_size} {' '.join(f'{p[0]},{p[1]},{p[2]}' for p in updated_peers)}"
+        self.sendToPeer(right_neighbor[1], right_neighbor[2], reset_msg)
+        
+
+    def getRightNeighbor(self):
+        return next(
+            (peer for peer in self.dht_info['peers']
+             if peer[3] == (self.dht_info['id'] + 1) % self.dht_info['n']),
+                None 
+            )
+       
 
     def joinDHT(self):
         response = self.sendToManager(f"join-dht {self.name}")
         if (response.startswith("SUCCESS")):
             self.initiateJoinProtocol()
     
-    def initiateJoinProtocol():
+    def initiateJoinProtocol(self):
         # implement join protocol 
-        pass
+        members = self.dht_info['peers'] if self.dht_info else [] 
+
+        new_n = len(members) + 1
+        self.dht_info = { 
+            'id': new_n - 1,
+            'n': new_n,
+            'peers': members + [(self.name, self.ip, self.p_port, new_n-1)]
+        }
+
+        leader = members[0]
+        msg = f"reset-id 0 {new_n}"
+        self.sendToPeer(leader['ip'], leader['p_port'], msg)
 
     def teardownDHT(self):
         response = self.sendToManager(f"teardown-dht {self.name}")
         if (response.startswith("SUCCESS")):
             first_run = True
             self.initiateTeardown(self.name, first_run)
+            self.sendToManager(f"teardown-complete {name}")
+
 
     def initiateTeardown(self, name, first_run):
         # implement teardown (send teardown command throughout the ring)
@@ -170,10 +204,9 @@ class Peer:
                         message = f"teardown {name} {first_run}"
                         self.sendToPeer(ip, port, message)
                         break
-            del self.hash_table
-            self.sendToManager(f"teardown-complete {name}")
+            self.hash_table = {}
         else:
-            del self.hash_table
+            self.hash_table = {}
             right_id = (self.dht_info['id'] + 1) % self.dht_info['n']
             for peer in self.dht_info['peers']:
                 if peer[3] == right_id:
@@ -272,11 +305,33 @@ class Peer:
         elif cmd == 'find-event':
             print("parts: ", parts)
             self.findEvent(parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7])
-        elif cmd == 'reset-id':
-            # need to implement
-            pass
         elif cmd == 'teardown':
+            print(parts)
             self.initiateTeardown(parts[1], parts[2])
+        elif cmd == 'reset-id':
+            new_id = int(parts[1])
+            new_n = int(parts[2])
+
+            self.dht_info['id'] = new_id
+            self.dht_info['n'] = new_n
+            print(f"new Id {new_id} new_n {new_n}")
+            if new_id < new_n - 1:
+                print("cats")
+                next_id = new_id
+                right_neighbor = self.getRightNeighbor()
+                msg = f"reset-id {next_id} {new_n}"
+                self.sendToPeer(right_neighbor[1], right_neighbor[2], msg)
+            else:   
+                print("dogs")
+                leader = (self.dht_info['id'] + 1) % self.dht_info['n']
+                self.sendToPeer(leader['ip'], leader['p_port'], "rebuild-dht")
+                self.sendToManager(f"dht-rebuilt {self.name} {leader['name']}")
+
+        elif cmd == 'rebuild-dht':
+            self.processCSV()
+            print("DHT Rebuilt Successfully")
+
+
 
     def listenManager(self):
         while True:

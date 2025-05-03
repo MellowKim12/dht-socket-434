@@ -196,6 +196,12 @@ class DHTManager:
             self.dht_leader = new_leader
             self.waiting_for = None
             self.pending_peer = None
+
+            if peer_name in self.dht_members:
+                self.dht_members.remove(peer_name)
+            else:
+                self.dht_members.add(peer_name)
+
             return "SUCCESS"
 
     """
