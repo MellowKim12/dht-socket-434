@@ -1,6 +1,6 @@
 import ast
 import json
-from pickle import TRUE
+from pickle import NEXT_BUFFER, TRUE
 import socket
 import sys
 import threading
@@ -23,6 +23,7 @@ class Peer:
         self.prev_addr = None
         self.state = 'Free'
         self.dht_info = None
+        self.teardown_complete = False
         self.hash_table = {}
         self.manager_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.manager_sock.bind((ip, m_port))
@@ -31,8 +32,8 @@ class Peer:
         self.lock = threading.Lock()
 
 
-    
 
+    
     def sendToManager(self, message):
         self.manager_sock.sendto(message.encode(), (self.manager_ip, self.manager_port))
         response, _ = self.manager_sock.recvfrom(1024)
@@ -151,33 +152,65 @@ class Peer:
     def leaveDHT(self):
         response = self.sendToManager(f"leave-dht {self.name}")
         if (response.startswith("SUCCESS")):
-            self.initiateLeaveProtocol()
+            self.initiateLeaveProtocol(self.name)
 
-    def initiateLeaveProtocol(self):
+    def initiateLeaveProtocol(self, name):
         # implement leave protocol from 1.2.3
+        print(f"{self.name} initiating leave protocol")
+        right_neighbor = self.getRightNeighbor()
+        print(right_neighbor)
+        first_run = "True"
+        self.sendToPeer(right_neighbor[1], right_neighbor[2], f"teardown {self.name} {first_run}")
 
-        pass
+        while not hasattr(self, "teardown_complete"):
+            pass
+        self.teardown_complete = True
+
+        new_ring_size = self.dht_info['n'] - 1
+        updated_peers = [p for p in self.dht_info['peers'] if p[0] != self.name]
+        reset_msg = f"reset-id 0 {new_ring_size} {'-'.join(f'{p[0]},{p[1]},{p[2]},{p[3]}' for p in updated_peers)} {name}"
+        self.sendToPeer(right_neighbor[1], right_neighbor[2], reset_msg)
+        
+
+    def getRightNeighbor(self):
+        return next(
+            (peer for peer in self.dht_info['peers']
+             if peer[3] == (self.dht_info['id'] + 1) % self.dht_info['n']),
+                None 
+            )
+       
 
     def joinDHT(self):
         response = self.sendToManager(f"join-dht {self.name}")
         if (response.startswith("SUCCESS")):
             self.initiateJoinProtocol()
     
-    def initiateJoinProtocol():
+    def initiateJoinProtocol(self):
         # implement join protocol 
-        pass
+        members = self.dht_info['peers'] if self.dht_info else [] 
+
+        new_n = len(members) + 1
+        self.dht_info = { 
+            'id': new_n - 1,
+            'n': new_n,
+            'peers': members + [(self.name, self.ip, self.p_port, new_n-1)]
+        }
+
+        leader = members[0]
+        msg = f"reset-id 0 {new_n}"
+        self.sendToPeer(leader['ip'], leader['p_port'], msg)
 
     def teardownDHT(self):
         response = self.sendToManager(f"teardown-dht {self.name}")
         if (response.startswith("SUCCESS")):
-            first_run = True
+            first_run = "True"
             self.initiateTeardown(self.name, first_run)
             self.sendToManager(f"teardown-complete {name}")
 
     def initiateTeardown(self, name, first_run):
         # implement teardown (send teardown command throughout the ring)
         if self.name == name:
-            if first_run:
+            if first_run == "True":
                 first_run = False
                 right_id = (self.dht_info['id'] + 1) % self.dht_info['n']
                 for peer in self.dht_info['peers']:
@@ -186,14 +219,14 @@ class Peer:
                         message = f"teardown {name} {first_run}"
                         self.sendToPeer(ip, port, message)
                         break
-            del self.hash_table
+            self.hash_table = {}
         else:
-            del self.hash_table
+            self.hash_table = {}
             right_id = (self.dht_info['id'] + 1) % self.dht_info['n']
             for peer in self.dht_info['peers']:
                 if peer[3] == right_id:
                     ip, port = peer[1], peer[2]
-                    message = f"teardown {name}"
+                    message = f"teardown {name} {first_run}"
                     self.sendToPeer(ip, port, message)
                     break
             
@@ -294,7 +327,40 @@ class Peer:
             # need to implement
             pass
         elif cmd == 'teardown':
+            print(parts)
             self.initiateTeardown(parts[1], parts[2])
+        elif cmd == 'reset-id':
+            new_id = int(parts[1])
+            new_n = int(parts[2])
+            test = iter(parts[3].split('-'))
+            res = [(ele.split(',')) for ele in test]
+            print("res", str(res))
+            tuples = [tuple(arr) for arr in res]
+            self.dht_info['peers'] = self.convert_string_to_int(tuples)
+            print("new peers: ", str(self.dht_info['peers']))
+
+            self.dht_info['id'] = new_id
+            self.dht_info['n'] = new_n
+            print(f"new Id {new_id} new_n {new_n}")
+            if new_id < new_n - 1:
+                print("cats")
+                next_id = new_id + 1
+                right_neighbor = self.getRightNeighbor()
+                msg = f"reset-id {next_id} {new_n} {parts[3]} {parts[4]}"
+                self.sendToPeer(right_neighbor[1], right_neighbor[2], msg)
+            else:   
+                print("dogs")
+                for peer in self.dht_info['peers']:
+                    if peer[3] == self.dht_info['id']:
+                        ip, port = peer[1], peer[2]
+                        self.sendToPeer(ip, port, "rebuild-dht")
+                        self.sendToManager(f"dht-rebuilt {parts[4]} {peer[0]}")
+                        break
+        elif cmd == 'rebuild-dht':
+            self.processCSV()
+            print("DHT Rebuilt Successfully")
+
+
 
     def listenManager(self):
         while True:
@@ -329,6 +395,19 @@ class Peer:
                 self.joinDHT()
             elif cmd.startswith('teardown-dht'):
                 self.teardownDHT()
+                
+    def convert_string_to_int(self,list_of_tuples):
+        new_list = []
+        for tup in list_of_tuples:
+            new_tuple = ()
+            for element in tup:
+                if element == tup[3] or element == tup[2]:
+                    new_tuple += (int(element),)
+                else:
+                    new_tuple += (element,)
+            new_list.append(new_tuple)
+        return new_list
+            
 
 if __name__ == '__main__':
     if len(sys.argv) != 7:
