@@ -153,7 +153,7 @@ class Peer:
 
         new_ring_size = self.dht_info['n'] - 1
         updated_peers = [p for p in self.dht_info['peers'] if p[0] != self.name]
-        reset_msg = f"reset-id 0 {new_ring_size} {'-'.join(f'{p[0]},{p[1]},{p[2]}' for p in updated_peers)}"
+        reset_msg = f"reset-id 0 {new_ring_size} {'-'.join(f'{p[0]},{p[1]},{p[2]},{p[3]}' for p in updated_peers)}"
         self.sendToPeer(right_neighbor[1], right_neighbor[2], reset_msg)
         
 
@@ -313,9 +313,10 @@ class Peer:
             new_id = int(parts[1])
             new_n = int(parts[2])
             test = iter(parts[3].split('-'))
-            res = [(ele, next(test)) for ele in test]
+            res = [(ele.split(',')) for ele in test]
             print("res", str(res))
-            # self.dht_info['peers'] = 
+            self.dht_info['peers'] = [tuple(arr) for arr in res]
+            print("new peers: ", str(self.dht_info['peers']))
 
             self.dht_info['id'] = new_id
             self.dht_info['n'] = new_n
@@ -328,9 +329,13 @@ class Peer:
                 self.sendToPeer(right_neighbor[1], right_neighbor[2], msg)
             else:   
                 print("dogs")
-                leader = (self.dht_info['id'] + 1) % self.dht_info['n']
-                self.sendToPeer(leader['ip'], leader['p_port'], "rebuild-dht")
-                self.sendToManager(f"dht-rebuilt {self.name} {leader['name']}")
+                right_id = (self.dht_info['id'] + 1) % self.dht_info['n']
+                for peer in self.dht_info['peers']:
+                    if peer[3] == right_id:
+                        ip, port = peer[1], peer[2]
+                        self.sendToPeer(ip, port, "rebuild-dht")
+                        self.sendToManager(f"dht-rebuilt {self.name} {peer[0]}")
+                        break
 
         elif cmd == 'rebuild-dht':
             self.processCSV()
