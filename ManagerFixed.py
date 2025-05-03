@@ -159,8 +159,11 @@ class DHTManager:
     INVOLVES MORE FROM THE PEER
     """
     def leaveDHT(self, peer_name):
+        print("leaveDHT Manager")
         if not self.dht_created or peer_name not in self.dht_members:
+            print("MAnager fail")
             return "FAILURE"
+        print("manager Success Success")
         self.pending_peer = peer_name
         self.waiting_for = 'dht-rebuilt'
         return "SUCCESS"
@@ -191,11 +194,19 @@ class DHTManager:
     """
     def rebuiltDHT(self, peer_name, new_leader):
         with self.lock:
+            print("waiting: ", self.waiting_for)
             if self.waiting_for != 'dht-rebuilt' or peer_name  != self.pending_peer:
+                print("failure rebuiilt")
                 return "FAILURE"
             self.dht_leader = new_leader
             self.waiting_for = None
             self.pending_peer = None
+
+            if peer_name in self.dht_members:
+                self.dht_members.remove(peer_name)
+            else:
+                self.dht_members.add(peer_name)
+
             return "SUCCESS"
 
     """
@@ -249,7 +260,7 @@ class DHTManager:
     Decides which command from a received message to run
     """
     def process_command (self, data):
-        parts = data.split()
+        parts = data.decode().split()
         if not parts:
             return "FAILURE. Empty command"
         cmd = parts[0]
@@ -273,6 +284,7 @@ class DHTManager:
             elif cmd == 'query-dht':
                 if len(parts) != 2:
                     return "FAILURE"
+                print("query started")
                 return self.queryDHT(parts[1])
             elif cmd == 'leave-dht':
                 if len(parts) != 2:
@@ -283,7 +295,9 @@ class DHTManager:
                     return "FAILURE"
                 return self.joinDHT(parts[1])
             elif cmd == 'dht-rebuilt':
+                print("in cmd")
                 if len(parts) != 3:
+                    print("fail command")
                     return "FAILURE"
                 return self.rebuiltDHT(parts[1], parts[2])
             elif cmd == 'teardown-dht':
@@ -305,10 +319,12 @@ class DHTManager:
     def run(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.bind(("", self.port))
+        ip_address = sock.getsockname()[0]
+        print(f"Manager running on IP {ip_address}")
         print(f"Manager running on port {self.port}")
         while True:
             data, addr = sock.recvfrom(1024)
-            response = self.process_command(data.decode())
+            response = self.process_command(data)
             sock.sendto(response.encode(), addr)
 
 if __name__ == '__main__':
