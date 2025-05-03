@@ -29,8 +29,8 @@ class Peer:
         self.lock = threading.Lock()
 
 
-    
 
+    
     def sendToManager(self, message):
         self.manager_sock.sendto(message.encode(), (self.manager_ip, self.manager_port))
         response, _ = self.manager_sock.recvfrom(1024)
