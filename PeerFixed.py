@@ -128,6 +128,8 @@ class Peer:
                 print("target port: ", target_port)
                 seq_id_send = "-".join(map(str, seq_id))
                 self.sendToPeer(target_ip,int(target_port),f"SUCCESS-query {row} {seq_id_send}")
+            else:
+                self.sendToPeer(target_ip,int(target_port),f"FAILURE. STORM event {event_id} not found in the DHT.")
         else:
             print("not found")
             seq_id.append(self.dht_info['id'])
